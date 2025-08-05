@@ -1,36 +1,44 @@
 import cv2
-import face_recognition
-import pickle
-from database import mark_attendance
+import os
 
-with open("encodings.pkl", "rb") as f:
-    data = pickle.load(f)
+name = input("Enter your name: ").strip()
 
-cap = cv2.VideoCapture(1)  # DroidCam camera
+save_path = f"dataset/{name}"
+os.makedirs(save_path, exist_ok=True)
+
+url = 'http://100.84.185.162:8080/video'
+cap = cv2.VideoCapture(url)
+
+if not cap.isOpened():
+    print("Cannot open camera stream. Check IP and Wi-Fi connection.")
+    exit()
+
+print("Camera stream opened. Capturing face images...")
+
+count = 0
 
 while True:
     ret, frame = cap.read()
     if not ret:
+        print("Failed to grab frame.")
         break
 
-    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    boxes = face_recognition.face_locations(rgb)
-    encodings = face_recognition.face_encodings(rgb, boxes)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
 
-    for encoding, (top, right, bottom, left) in zip(encodings, boxes):
-        matches = face_recognition.compare_faces(data["encodings"], encoding)
-        name = "Unknown"
+    for (x, y, w, h) in faces:
+        face_img = frame[y:y+h, x:x+w]
+        cv2.imwrite(f"{save_path}/{count}.jpg", face_img)
+        count += 1
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
 
-        if True in matches:
-            matched_idx = matches.index(True)
-            name = data["names"][matched_idx]
-            mark_attendance(name)
+    cv2.imshow("Register Face - Mobile Camera", frame)
 
-        cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-        cv2.putText(frame, name, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2)
-
-    cv2.imshow("Face Recognition - Press Q to Quit", frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+    if count >= 20:
+        print("Collected 20 face images.")
         break
 
 cap.release()
